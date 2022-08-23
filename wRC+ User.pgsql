@@ -1,3 +1,5 @@
+-- thanners#8647 on Discord
+
 -- User query -------------------------------------------------------------------------------
 -- insert parameters here -----------------
 with u as (--select 'thanners'as user

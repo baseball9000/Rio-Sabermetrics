@@ -1,3 +1,5 @@
+-- thanners#8647 on Discord
+
 -- Character query -------------------------------------------------------------------------------
 -- user would type in something like: %cwRC+ off yoshi
 
