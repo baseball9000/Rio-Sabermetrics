@@ -4,10 +4,10 @@
 -- user would type in something like: %cwRC+ off yoshi
 
 -- insert parameters here ----------------------
-with c as (select 'king boo' as character
+with c as (--select 'king boo' as character
            --union select 'boo' as character
            --union select 'luigi' as character
-           --select name_lowercase as character from character
+           select name_lowercase as character from character
            ),
      x as (select 'off' as competition),
      h as (select 'lefty' as handedness
@@ -77,7 +77,9 @@ select
                             and (case when (select * from x)='off' then (lower(tag_names) like '%normal%' and lower(tag_names) not like '%superstar%')
                                      when (select * from x)='on' then (lower(tag_names) like '%superstar%')
                                      end)
+                            and case when lower(cgs.batting_hand::text)='true' then 'lefty' when lower(cgs.batting_hand::text)='false' then 'righty' end in (select * from h)
                                      group by 1,2,3) pa on pa.name_lowercase = a.character
+                                                        and pa.handedness = a.metric_detail
 
 group by 1,2, a.value, b.value, c.value, r.value -- parameterize
 having sum(pa.result_count) > 300
