@@ -366,7 +366,13 @@ d12.rank as batter_bowserhr_percentile,
 d13.bowserhrpercent as pitcher_bowserhrpercent,
 d13.rank as pitcher_bowserhr_percentile,
 d14.maxelo as max_elo,
-d14.rank as maxelo_percentile
+d14.rank as maxelo_percentile,
+d15.kbhrpercent as kbhr_percent,
+d15.rank as kbhr_percentile,
+d16.goodtimingpercent as charge_timing_percent,
+d16.rank as charge_timing_percentile,
+d17.goodtimingpercent as slap_timing_percent,
+d17.rank as slap_timing_percentile
 
 from(
 select pitcher_username, barpercent, 
@@ -587,5 +593,56 @@ group by 1
 )b
 )c
 )d14 on d1.pitcher_username = d14.winner_of_game
+left join( -- king boo star swing HR rate (stars on) excludes swings on PG
+select batter_username, kbhrpercent, 
+(percent_rank() over(order by kbhrpercent))*100::dec as rank
+from(
+select batter_username, kbhr/total_star_swings::dec as kbhrpercent from(
+select batter_username, 
+sum(case when result_of_ab_named in ('HR')
+then 1 else 0 end) kbhr,
+count(*) as total_star_swings
+from data_temp where type_of_swing_name ='star'
+and stadium_name not in ('Peachs Garden')
+group by 1 
+having sum(case when result_of_ab_named in ('HR')
+then 1 else 0 end) >5
+)b
+)c
+)d15 on d1.pitcher_username = d15.batter_username
+left join( -- timing on charge swings with pull dependent power hitters (bro, bowser, petey, pianta, DK) 7-8-9
+select batter_username, goodtimingpercent, 
+(percent_rank() over(order by goodtimingpercent))*100::dec as rank
+from(
+select batter_username, good_timing/total_swings::dec as goodtimingpercent from(
+select batter_username, 
+sum(case when frame_of_swing_upon_contact in ('7','8','9')
+then 1 else 0 end) good_timing,
+count(*) as total_swings
+from data_temp where type_of_swing_name in ('charge')
+and frame_of_swing_upon_contact in ('2','3','4','5','6','7','8','9','10')
+and lower(batter) in('bro(h)','bro(f)','bro(b)','bowser','petey','pianta(r)','pianta(y)','pianta(b)','dk')
+group by 1 
+having sum(case when frame_of_swing_upon_contact in ('7','8','9')
+then 1 else 0 end) >10
+)b
+)c
+)d16 on d1.pitcher_username = d16.batter_username
+left join( -- timing on slap (3,4,5)
+select batter_username, goodtimingpercent, 
+(percent_rank() over(order by goodtimingpercent))*100::dec as rank
+from(
+select batter_username, good_timing/total_swings::dec as goodtimingpercent from(
+select batter_username, 
+sum(case when frame_of_swing_upon_contact in ('3','4','5')
+then 1 else 0 end) good_timing,
+count(*) as total_swings
+from data_temp where type_of_swing_name in ('slap')
+and frame_of_swing_upon_contact in ('2','3','4','5','6','7','8','9','10')
+group by 1 
+having sum(case when frame_of_swing_upon_contact in ('3','4','5')
+then 1 else 0 end) >25
+)b
+)c
+)d17 on d1.pitcher_username = d17.batter_username
 ;
-
