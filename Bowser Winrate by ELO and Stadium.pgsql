@@ -1,4 +1,4 @@
--- bowser winrate by elo percentile and stadium --
+-- bowser winrate by elo percentile and stadium ---
 -- thanners on discord
 -- 4/5/24
 
