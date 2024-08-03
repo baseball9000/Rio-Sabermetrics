@@ -602,7 +602,7 @@ select * from (
                                 left join tag_set ts on gh.tag_set_id = ts.id
                                 left join character_game_summary cgs2 on ga.game_id = cgs2.game_id
                                 left join character ch on ch.char_id = cgs2.char_id
-                            where ts.name_lowercase = 's9superstarson'
+                            where ts.name_lowercase = 's9superstarsoff'
                             
                             group by 1,2,3,4, cgs2.singles, cgs2.doubles, cgs2.triples, cgs2.homeruns, cgs2.star_hits, cgs2.game_id
 ) a 
