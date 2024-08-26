@@ -1,6 +1,7 @@
 -- Run Expectancy Matrix, Linear Weights and wOBA
--- @thanners8647 on discord
--- 8/11/2022-8/23/2022
+-- @thanners on discord
+-- 8/11/2022-8/23/2022 original creation
+-- Updated on 8/24/2024 
 -- Project Rio for Mario Superstar Baseball for the Nintendo Gamecube
 
 -- ###############################
@@ -54,15 +55,14 @@ select e.game_id,
        coalesce((max(e.away_score))-(lag(max(e.away_score), 1) over (PARTITION BY e.game_id order by e.inning)), max(e.away_score)) as runs_in_inning
  from event e 
   left join game g on g.game_id = e.game_id
-  left join (select gt.game_id,
-                    string_agg(ta.name_lowercase::text, ', ') as tag_names,
-                    string_agg(gt.tag_id::text, ', ') as tag_ids
-             from game_tag gt 
-              left join tag ta on gt.tag_id = ta.id
-    group by 1) gt on g.game_id = gt.game_id
- where lower(g.ranked::text)='true'                                                         -- 300
-  and (lower(gt.tag_names) like '%normal%' and lower(gt.tag_names) not like '%superstar%')  -- 301
-  --and (lower(tag_names) like '%superstar%')                                               -- 301
+  left join game_history gh on g.game_id = gh.game_id
+  left join tag_set ts on gh.tag_set_id = ts.id
+ where ts.name_lowercase in (
+'starsoffseason6',
+'starsoffseason7',
+'starsoffseason8',
+'s9superstarsoff'
+)
   and half_inning ='0'
   and inning <'9' -- RE24 only looks at innings 1-8 per Tom Tango
 group by 1,2,3
@@ -76,15 +76,14 @@ select e.game_id,
        coalesce((max(e.home_score))-(lag(max(e.home_score), 1) over (PARTITION BY e.game_id order by e.inning)), max(e.home_score)) as runs_in_inning
  from event e 
   left join game g on g.game_id = e.game_id
-  left join (select gt.game_id,
-                    string_agg(ta.name_lowercase::text, ', ') as tag_names,
-                    string_agg(gt.tag_id::text, ', ') as tag_ids
-            from game_tag gt 
-             left join tag ta on  gt.tag_id = ta.id
-    group by 1) gt on g.game_id = gt.game_id
- where lower(g.ranked::text)='true'                                                         -- 300
-  and (lower(gt.tag_names) like '%normal%' and lower(gt.tag_names) not like '%superstar%')  -- 301
-  --and (lower(tag_names) like '%superstar%')                                               -- 301
+  left join game_history gh on g.game_id = gh.game_id
+  left join tag_set ts on gh.tag_set_id = ts.id
+ where ts.name_lowercase in (
+'starsoffseason6',
+'starsoffseason7',
+'starsoffseason8',
+'s9superstarsoff'
+)
   and half_inning ='1'
   and inning <'9' -- RE24 only looks at innings 1-8 per Tom Tango
 group by 1,2,3
@@ -135,22 +134,31 @@ CREATE TEMPORARY TABLE base_out_state_aggregate AS
 
 
             from(
-            select distinct game_id,
-                            away_score,
-                            home_score,
-                            case when half_inning ='0' then away_score-(min(away_score) over (partition by game_id, inning, half_inning order by event_num))
-                            when half_inning ='1' then home_score-(min(home_score) over (partition by game_id, inning, half_inning order by event_num))
+            select distinct e.game_id,
+                            e.away_score,
+                            e.home_score,
+                            case when e.half_inning ='0' then e.away_score-(min(e.away_score) over (partition by e.game_id, e.inning, e.half_inning order by e.event_num))
+                            when e.half_inning ='1' then e.home_score-(min(e.home_score) over (partition by e.game_id, e.inning, e.half_inning order by e.event_num))
                             end runs_so_far_hi,
-                            inning,
-                            case when half_inning ='0' then 'top' when half_inning ='1' then 'bottom' end half_inning_name,
-                            event_num,
-                            outs,
-                            case when runner_on_1 is not null then '1' else '0' end runner_on_1st,
-                            case when runner_on_2 is not null then '1' else '0' end runner_on_2nd,
-                            case when runner_on_3 is not null then '1' else '0' end runner_on_3rd
+                            e.inning,
+                            case when e.half_inning ='0' then 'top' when e.half_inning ='1' then 'bottom' end half_inning_name,
+                            e.event_num,
+                            e.outs,
+                            case when e.runner_on_1 is not null then '1' else '0' end runner_on_1st,
+                            case when e.runner_on_2 is not null then '1' else '0' end runner_on_2nd,
+                            case when e.runner_on_3 is not null then '1' else '0' end runner_on_3rd
 
-                    from event 
-                    order by event_num asc
+                    from event e
+                      left join game g on g.game_id = e.game_id
+                      left join game_history gh on g.game_id = gh.game_id
+                      left join tag_set ts on gh.tag_set_id = ts.id
+                      where ts.name_lowercase in (
+                    'starsoffseason6',
+                    'starsoffseason7',
+                    'starsoffseason8',
+                    's9superstarsoff'
+                    )
+                    order by e.event_num asc
                          )a 
                          order by event_num asc
                     ;
@@ -187,7 +195,7 @@ CREATE TEMPORARY TABLE rematrix_values AS
         group by 1
         )b
         group by 1, bos_value_agg, cnt;
-
+    
 
 
 -- ###############################
@@ -263,15 +271,15 @@ select
                             case when e.runner_on_3 is not null then '1' else '0' end runner_on_3rd
 
                     from event e
-                     left join game ga
-                      on e.game_id = ga.game_id
-                     left join (select gt.game_id, string_agg(ta.name_lowercase::text, ', ') as tag_names, string_agg(gt.tag_id::text, ', ') as tag_ids
-                       from game_tag gt left join tag ta on  gt.tag_id = ta.id
-                       group by 1) gt on ga.game_id = gt.game_id
-
-                    where lower(ranked::text) ='true'                                                       -- 300
-                    and (lower(tag_names) like '%normal%' and lower(tag_names) not like '%superstar%')      -- 301
-                    --and (lower(tag_names) like '%superstar%')                                             -- 301
+                      left join game g on g.game_id = e.game_id
+                      left join game_history gh on g.game_id = gh.game_id
+                      left join tag_set ts on gh.tag_set_id = ts.id
+                      where ts.name_lowercase in (
+                    'starsoffseason6',
+                    'starsoffseason7',
+                    'starsoffseason8',
+                    's9superstarsoff'
+                    )
                     order by e.event_num asc
                          )a 
                          where result_of_ab_named is not null
@@ -284,6 +292,7 @@ order by event_num
 )d group by 1
 )e group by 1, ab_agg_value, cnt_ab_type
 ;
+
 
 --##############################################################################
 -- adjust the linear weights to make the value of an out 0
@@ -304,7 +313,6 @@ re_value_of_ab_result_type::decimal-adjustment::decimal adj_value
 from linear_weights
 cross join linear_weights_out_adj
 )a where adj_value is not null;
-
 
 
 
@@ -336,16 +344,15 @@ end result_of_ab_named,
 count(*) result_count
 
 from event e
-left join game ga
-on e.game_id = ga.game_id
-left join (select gt.game_id, string_agg(ta.name_lowercase::text, ', ') as tag_names, string_agg(gt.tag_id::text, ', ') as tag_ids
-from game_tag gt left join tag ta on  gt.tag_id = ta.id
-group by 1) gt on ga.game_id = gt.game_id
-
-where lower(ranked::text) ='true'                                                       -- 300
-and (lower(tag_names) like '%normal%' and lower(tag_names) not like '%superstar%')      -- 301
---and (lower(tag_names) like '%superstar%')                                             -- 301
-
+    left join game g on g.game_id = e.game_id
+    left join game_history gh on g.game_id = gh.game_id
+    left join tag_set ts on gh.tag_set_id = ts.id
+    where ts.name_lowercase in (
+'starsoffseason6',
+'starsoffseason7',
+'starsoffseason8',
+'s9superstarsoff'
+)
 group by 1
 order by result_count desc
 )a where result_of_ab_named is not null
@@ -374,15 +381,15 @@ count(*) result_count
 
 from event e
 
-        left join game ga
-         on e.game_id = ga.game_id
-        left join (select gt.game_id, string_agg(ta.name_lowercase::text, ', ') as tag_names, string_agg(gt.tag_id::text, ', ') as tag_ids
-                    from game_tag gt left join tag ta on  gt.tag_id = ta.id
-        group by 1) gt on ga.game_id = gt.game_id
-
-    where lower(ranked::text) ='true'                                                       -- 300
-     and (lower(tag_names) like '%normal%' and lower(tag_names) not like '%superstar%')     -- 301
-     --and (lower(tag_names) like '%superstar%')                                            -- 301
+    left join game g on g.game_id = e.game_id
+    left join game_history gh on g.game_id = gh.game_id
+    left join tag_set ts on gh.tag_set_id = ts.id
+    where ts.name_lowercase in (
+'starsoffseason6',
+'starsoffseason7',
+'starsoffseason8',
+'s9superstarsoff'
+)
 
 group by 1) a
 left join linear_weights_adj lwa
@@ -425,17 +432,20 @@ select
 
             from event e
 
-                    left join game ga
-                    on e.game_id = ga.game_id
-                    left join (select gt.game_id, string_agg(ta.name_lowercase::text, ', ') as tag_names, string_agg(gt.tag_id::text, ', ') as tag_ids
-                                from game_tag gt left join tag ta on  gt.tag_id = ta.id
-                    group by 1) gt on ga.game_id = gt.game_id
-                    left join (select distinct ru.id, ru.username_lowercase away_username from rio_user ru) awayru on awayru.id = ga.away_player_id
-                    left join (select distinct ru.id, ru.username_lowercase home_username from rio_user ru) homeru on homeru.id = ga.home_player_id
+                      left join game g on g.game_id = e.game_id
+                      left join game_history gh on g.game_id = gh.game_id
+                      left join tag_set ts on gh.tag_set_id = ts.id
+
+                    left join (select distinct ru.id, ru.username_lowercase away_username from rio_user ru) awayru on awayru.id = g.away_player_id
+                    left join (select distinct ru.id, ru.username_lowercase home_username from rio_user ru) homeru on homeru.id = g.home_player_id
                     left join character_game_summary cgs on cgs.id = e.batter_id
                     left join character ch on ch.char_id = cgs.char_id
-                where lower(ranked::text) ='true'                                                                                                       -- 300
-                 and (lower(tag_names) like '%normal%' and lower(tag_names) not like '%superstar%')                                                   -- 301
+                      where ts.name_lowercase in (
+                    'starsoffseason6',
+                    'starsoffseason7',
+                    'starsoffseason8',
+                    's9superstarsoff'
+                    )
                 -- and (lower(tag_names) like '%superstar%')                                                                                               -- 301
                 -- and ((e.half_inning ='0' and awayru.away_username ='thanners') or (e.half_inning ='1' and homeru.home_username ='thanners'))         -- 302
                 -- and ch.name_lowercase ='bowser'                                                                                                      -- 303
@@ -478,21 +488,106 @@ from(
                             e.outs
 
                     from event e
-                     left join game ga
-                      on e.game_id = ga.game_id
-                     left join (select gt.game_id, string_agg(ta.name_lowercase::text, ', ') as tag_names, string_agg(gt.tag_id::text, ', ') as tag_ids
-                       from game_tag gt left join tag ta on  gt.tag_id = ta.id
-                       group by 1) gt on ga.game_id = gt.game_id
-
-                    where lower(ranked::text) ='true'
-                    and (lower(tag_names) like '%normal%' and lower(tag_names) not like '%superstar%')
-                    --and (lower(tag_names) like '%superstar%')
-                      order by e.event_num asc
+                    left join game g on g.game_id = e.game_id
+                    left join game_history gh on g.game_id = gh.game_id
+                    left join tag_set ts on gh.tag_set_id = ts.id
+                    where ts.name_lowercase in (
+                'starsoffseason6',
+                'starsoffseason7',
+                'starsoffseason8',
+                's9superstarsoff'
+                )
+                    order by e.event_num asc
                     )a 
                     left join game ga on ga.game_id = a.game_id
                     where result_of_ab is not null
                     group by 1
                     )b;
+
+-- cwOBA Stars Off, all 54 characters
+ 
+
+--##############################################################################
+--**** Calculate a character, RioUser, or RioUser-character's wOBA
+-- edits made on 8/18 to grab all characters
+drop table if exists cwoba;
+create temp table cwoba as
+select c.name_lowercase, c.handedness,
+(unadj_woba::decimal*ws.woba_scale::decimal) woba from (
+    select b.name_lowercase, b.handedness,
+    sum(agg_value_of_ab_result)::decimal/sum(result_count)::decimal unadj_woba from(
+        select a.name_lowercase, a.handedness,
+        a.result_of_ab_named, a.result_count, lwa.adj_value*a.result_count agg_value_of_ab_result from(
+            select
+            ch.name_lowercase,
+            case when lower(cgs.batting_hand::text)='true' then 'lefty' when lower(cgs.batting_hand::text)='false' then 'righty' end handedness,
+            case
+            when e.result_of_ab in ('2', '3') then 'walk'
+            when e.result_of_ab = '7' then 'single'
+            when e.result_of_ab = '8' then 'double'
+            when e.result_of_ab = '9' then 'triple'
+            when e.result_of_ab = '10' then 'HR'
+            when e.result_of_ab in ('11', '12') then 'rboe'
+            when e.result_of_ab in ('1', '4', '5', '6', '15', '16') then 'out'
+            end result_of_ab_named,
+            count(*) result_count
+
+            from event e
+
+                    left join game g on g.game_id = e.game_id
+                    left join game_history gh on g.game_id = gh.game_id
+                    left join tag_set ts on gh.tag_set_id = ts.id
+                    left join (select distinct ru.id, ru.username_lowercase away_username from rio_user ru) awayru on awayru.id = g.away_player_id
+                    left join (select distinct ru.id, ru.username_lowercase home_username from rio_user ru) homeru on homeru.id = g.home_player_id
+                    left join character_game_summary cgs on cgs.id = e.batter_id
+                    left join character ch on ch.char_id = cgs.char_id
+                    where ts.name_lowercase in (
+                'starsoffseason6',
+                'starsoffseason7',
+                'starsoffseason8',
+                's9superstarsoff'
+                )
+                -- and (lower(tag_names) like '%superstar%')                                                                                            -- 301
+                -- and ((e.half_inning ='0' and awayru.away_username ='thanners') or (e.half_inning ='1' and homeru.home_username ='thanners'))         -- 302
+                -- and ch.name_lowercase ='bowser'                                                                                                       -- 303
+                -- and lower(cgs.batting_hand::text) ='true'                                                                                            -- 304
+
+
+            group by 1,2,3
+            )a
+left join linear_weights_adj lwa
+on a.result_of_ab_named = lwa.result_of_ab_named
+where a.result_of_ab_named is not null 
+)b group by 1,2
+)c
+cross join woba_scale ws
+group by 
+name_lowercase, handedness, unadj_woba, woba_scale
+;
+
+select * from cwoba
+;
+
+-- above here is used on Stat hub, below here is old
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1046,7 +1141,7 @@ name_lowercase, handedness, unadj_woba, woba_scale
 
 --##############################################################################
 --**** Calculate a character, RioUser, or RioUser-character's wOBA
--- edits made on 8/18 to grab all characters
+-- edits made on 8/18/22 to grab all characters
 drop table if exists cwoba_stars_on;
 create temp table cwoba_stars_on as
 select c.name_lowercase, c.handedness,
